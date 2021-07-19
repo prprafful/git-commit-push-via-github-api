@@ -1,24 +1,26 @@
-import * as GitHubApi from "@octokit/rest";
+// import * as GitHubApi from "@octokit/rest";
+import { Octokit as GitHubApi } from "@octokit/rest";
 
 const debug = require("debug")("git-commit-push-via-github-api");
 const GITHUB_API_TOKEN = process.env.GITHUB_API_TOKEN;
 const getReferenceCommit = function(github: GitHubApi, options: GitCommitPushOptions) {
     return new Promise((resolve, reject) => {
-        github.git.getRef(
-            {
+        github.git
+            .getRef({
                 owner: options.owner,
                 repo: options.repo,
                 ref: options.fullyQualifiedRef
-            },
-            (err, res) => {
+            })
+            .then(res => {
+                debug("getReferenceCommit Response: %O", res);
+                return resolve({ referenceCommitSha: res.data.object.sha });
+            })
+            .catch(err => {
                 if (err) {
                     debug("getReferenceCommit Error", JSON.stringify(err, null, "  "));
                     return reject(err);
                 }
-                debug("getReferenceCommit Response: %O", res);
-                return resolve({ referenceCommitSha: res.data.object.sha });
-            }
-        );
+            });
     });
 };
 
@@ -63,70 +65,72 @@ const createTree = function(github: GitHubApi, options: GitCommitPushOptions, da
         return Promise.all(promises).then(files => {
             debug("files: %O", files);
             // TODO: d.ts bug?
-            github.git.createTree(
-                {
+            github.git
+                .createTree({
                     owner: options.owner,
                     repo: options.repo,
                     tree: files,
                     base_tree: data.referenceCommitSha
-                } as any,
-                (err: any, res: any) => {
+                } as any)
+                .then((res: any) => {
+                    debug("createTree Response: %O", res);
+                    return resolve(Object.assign(data, { newTreeSha: res.data.sha }));
+                })
+                .catch(err => {
                     if (err) {
                         debug("createTree", JSON.stringify(err, null, "  "));
                         return reject(err);
                     }
-                    debug("createTree Response: %O", res);
-                    return resolve(Object.assign(data, { newTreeSha: res.data.sha }));
-                }
-            );
+                });
         });
     });
 };
 
 const createCommit = function(github: GitHubApi, options: GitCommitPushOptions, data: any) {
     return new Promise((resolve, reject) => {
-        github.git.createCommit(
-            {
+        github.git
+            .createCommit({
                 owner: options.owner,
                 repo: options.repo,
                 message: options.commitMessage || "commit",
                 tree: data.newTreeSha,
                 parents: [data.referenceCommitSha]
-            },
-            (err, res) => {
+            })
+            .then(res => {
+                debug("createCommit Response: %O", res);
+                return resolve(Object.assign(data, { newCommitSha: res.data.sha }));
+            })
+            .catch(err => {
                 if (err) {
                     debug("createCommit", JSON.stringify(err, null, "  "));
                     return reject(err);
                 }
-                debug("createCommit Response: %O", res);
-                return resolve(Object.assign(data, { newCommitSha: res.data.sha }));
-            }
-        );
+            });
     });
 };
 
 const updateReference = function(github: GitHubApi, options: GitCommitPushOptions, data: any) {
     return new Promise((resolve, reject) => {
-        github.git.updateRef(
-            {
+        github.git
+            .updateRef({
                 owner: options.owner,
                 repo: options.repo,
                 ref: options.fullyQualifiedRef,
                 sha: data.newCommitSha,
                 force: options.forceUpdate
-            },
-            (err, data) => {
+            })
+            .then(res => {
+                debug("updateReference Response: %O", data);
+                return resolve(data);
+            })
+            .catch(err => {
                 if (err) {
                     debug("updateReference", JSON.stringify(err, null, "  "));
                     return reject(err);
                 }
-                debug("updateReference Response: %O", data);
-                return resolve(data);
-            }
-        );
+            });
     });
 };
-
 export interface GitCommitPushOptions {
     owner: string;
     repo: string;
